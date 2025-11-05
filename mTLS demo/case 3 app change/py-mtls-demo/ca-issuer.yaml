@@ -1,0 +1,36 @@
+# --- Step 1: Create a self-signed Root CA ---
+# This is the absolute root of trust.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-ca
+spec:
+  selfSigned: {}
+---
+# --- Step 2: Create an Intermediate CA Certificate ---
+# This creates a new CA certificate and key, signed by the Root CA above.
+# The result is stored in the 'ca-key-pair' secret.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: demo-ca
+  namespace: default
+spec:
+  isCA: true
+  commonName: demo-ca
+  secretName: ca-key-pair # This secret will hold the intermediate CA's cert/key
+  issuerRef:
+    name: selfsigned-ca # Signed by our self-signed Root CA
+    kind: ClusterIssuer
+---
+# --- Step 3: Create an Issuer from the Intermediate CA ---
+# This Issuer USES the 'ca-key-pair' secret to sign new certificates.
+# Both your frontend and backend will point to this 'demo-ca' Issuer.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: demo-ca
+  namespace: default
+spec:
+  ca:
+    secretName: ca-key-pair # Use the Intermediate CA's key stored in this secret

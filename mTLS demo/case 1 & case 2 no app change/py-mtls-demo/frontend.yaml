@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-deployment
+  labels:
+    app: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: py-mtls-frontend:phase1-persistent
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+        env:
+        - name: CERT_PATH
+          value: "/etc/tls/tls.crt"
+        - name: KEY_PATH
+          value: "/etc/tls/tls.key"
+        - name: CA_PATH
+          value: "/etc/tls/ca.crt"
+        - name: BACKEND_HOST
+          value: "backend-svc"
+        - name: BACKEND_PORT
+          value: "8443"
+        - name: LISTEN_HOST
+          value: "0.0.0.0"
+        - name: LISTEN_PORT
+          value: "8080"
+        volumeMounts:
+        - name: certs
+          mountPath: "/etc/tls"
+          readOnly: true
+      volumes:
+      - name: certs
+        csi:
+          driver: csi.cert-manager.io
+          readOnly: true
+          volumeAttributes:
+            csi.cert-manager.io/issuer-name: demo-ca
+            csi.cert-manager.io/issuer-kind: Issuer
+            csi.cert-manager.io/common-name: frontend-app
+            csi.cert-manager.io/duration: 1m
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-svc
+spec:
+  type: NodePort
+  selector:
+    app: frontend
+  ports:
+  - name: http
+    protocol: TCP
+    port: 8080
+    targetPort: 8080
+    nodePort: 30080  # NodePort for external access

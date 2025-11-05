@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-deployment
+  labels:
+    app: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: py-backend:gunicorn
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8443
+        env:
+        - name: CERT_PATH
+          value: "/var/run/secrets/mtls/tls.crt"
+        - name: KEY_PATH
+          value: "/var/run/secrets/mtls/tls.key"
+        - name: CA_PATH
+          value: "/var/run/secrets/mtls/ca.crt"
+        - name: LISTEN_HOST
+          value: "0.0.0.0"
+        - name: LISTEN_PORT
+          value: "8443"
+        volumeMounts:
+        - name: mtls-certs
+          mountPath: "/var/run/secrets/mtls"
+          readOnly: true
+      volumes:
+      - name: mtls-certs
+        csi:
+          driver: csi.cert-manager.io
+          readOnly: true
+          volumeAttributes:
+            csi.cert-manager.io/issuer-name: "demo-ca"
+            csi.cert-manager.io/common-name: "backend-svc.default.svc.cluster.local"
+            csi.cert-manager.io/dns-names: "backend-svc"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-svc
+spec:
+  selector:
+    app: backend
+  ports:
+  - name: https
+    protocol: TCP
+    port: 8443
+    targetPort: 8443
