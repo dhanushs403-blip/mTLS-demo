@@ -266,39 +266,71 @@ This deploys the *updated* application code that can reload certs and be toggled
 
 ---
 
-## Appendix: Verifying mTLS Enforcement (Rogue Pod Test)
+## Appendix: Optional Verification Steps
 
-This final test proves that our mTLS setup enforces a "zero-trust" policy. We will deploy a "rogue" pod that is *not* part of our application and prove that it is unauthorized to access the backend, even from within the cluster.
+These steps are not required for the demo but are useful for debugging and proving the system is working as expected.
 
-**Prerequisite:** This test must be run while `CASE 3` is deployed and running with `USE_MTLS=true` for both the frontend and backend.
+### 1. Verifying mTLS Enforcement (Rogue Pod Test)
+
+This test proves that our mTLS setup enforces a "zero-trust" policy by blocking unauthorized clients.
+
+**Prerequisite:** This test must be run while `CASE 3` is deployed and running with `USE_MTLS=true`.
 
 1.  **Deploy the Rogue Pod**
-    Open a new terminal. Run an interactive Alpine pod. This pod does *not* have the CSI driver and therefore has no client certificates.
+    This pod does *not* have the CSI driver and therefore has no client certificates.
     ```bash
     kubectl run rogue-client --image=alpine --rm -it -- sh
     ```
 
 2.  **Install curl (Inside the Pod Shell)**
-    Once you are inside the pod's shell (you'll see `/ #`), update the package manager and install `curl`:
+    Once you are inside the pod's shell (`/ #`), install `curl`:
     ```bash
     apk update && apk add curl
     ```
 
 3.  **Attempt to Access the Backend**
-    Now, try to communicate directly with the `backend-svc`. We use `-v` for verbose output and `-k` to skip *server* certificate validation (our test is concerned with *client* authorization).
+    Try to communicate directly with the `backend-svc`.
     *(Note: Our backend service is running on port `8080`)*
     ```bash
     curl -v -k https://backend-svc:8080
     ```
 
 4.  **Analyze the Result (Proof of Failure)**
-    The command will **fail** during the SSL/TLS handshake. This is the **correct and desired behavior**.
+    The command will **fail** during the SSL/TLS handshake. This is the **correct and desired behavior**. The `backend-svc` (running Gunicorn in mTLS mode) sent a `CertificateRequest`, but our "rogue-client" had no certificate to provide.
 
-    You will see verbose output from `curl` showing that the connection was terminated. This happens because the `backend-svc` (running Gunicorn in mTLS mode) sent a `CertificateRequest` (as seen in Wireshark), but our "rogue-client" had no certificate to provide.
-
-    This proves that only pods with valid, CA-signed client certificates (like our `frontend` pod) are authorized to communicate with the backend, successfully enforcing a zero-trust network policy.
+    This proves that only pods with valid, CA-signed client certificates (like our `frontend` pod) are authorized to communicate.
 
     Type `exit` to close the rogue pod's shell.
+
+### 2. Inspecting Live Certificates
+
+You can pull the certificates directly from the running pods to inspect their details (like expiration time, common name, etc.).
+
+1.  **Get the Exact Pod Names**
+    Run this and copy the full names of your frontend and backend pods.
+    ```bash
+    kubectl get pods
+    ```
+
+2.  **Extract Certificates**
+    Paste the full pod names into the commands below.
+
+    *Extract backend cert:*
+    ```bash
+    kubectl exec <YOUR_BACKEND_POD_NAME_HERE> -- cat /var/run/secrets/mtls/tls.crt > backend-cert.crt
+    ```
+
+    *Extract frontend cert:*
+    ```bash
+    kubectl exec <YOUR_FRONTEND_POD_NAME_HERE> -- cat /etc/tls/tls.crt > frontend-cert.crt
+    ```
+
+3.  **Inspect with OpenSSL (Optional)**
+    You can now read the contents of the saved certificates. This is useful to confirm the `Common Name` or check the `Not After` timestamp to verify rotation.
+    ```bash
+    openssl x509 -in backend-cert.crt -text -noout
+    openssl x509 -in frontend-cert.crt -text -noout
+    ```
 
 
 
